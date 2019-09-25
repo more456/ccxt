@@ -9,6 +9,7 @@ import math
 from ccxt.base.errors import ExchangeError
 from ccxt.base.errors import AuthenticationError
 from ccxt.base.errors import ArgumentsRequired
+from ccxt.base.errors import BadSymbol
 from ccxt.base.errors import InsufficientFunds
 from ccxt.base.errors import InvalidOrder
 from ccxt.base.errors import OrderNotFound
@@ -58,9 +59,9 @@ class huobipro (Exchange):
             'urls': {
                 'logo': 'https://user-images.githubusercontent.com/1294454/27766569-15aa7b9a-5edd-11e7-9e7f-44791f4ee49c.jpg',
                 'api': {
-                    'market': 'https://api.huobi.pro',
-                    'public': 'https://api.huobi.pro',
-                    'private': 'https://api.huobi.pro',
+                    'market': 'https://{hostname}',
+                    'public': 'https://{hostname}',
+                    'private': 'https://{hostname}',
                     'zendesk': 'https://huobiglobal.zendesk.com/hc/en-us/articles',
                 },
                 'www': 'https://www.huobi.pro',
@@ -140,18 +141,24 @@ class huobipro (Exchange):
                 },
             },
             'exceptions': {
-                'gateway-internal-error': ExchangeNotAvailable,  # {"status":"error","err-code":"gateway-internal-error","err-msg":"Failed to load data. Try again later.","data":null}
-                'account-frozen-balance-insufficient-error': InsufficientFunds,  # {"status":"error","err-code":"account-frozen-balance-insufficient-error","err-msg":"trade account balance is not enough, left: `0.0027`","data":null}
-                'invalid-amount': InvalidOrder,  # eg "Paramemter `amount` is invalid."
-                'order-limitorder-amount-min-error': InvalidOrder,  # limit order amount error, min: `0.001`
-                'order-marketorder-amount-min-error': InvalidOrder,  # market order amount error, min: `0.01`
-                'order-limitorder-price-min-error': InvalidOrder,  # limit order price error
-                'order-limitorder-price-max-error': InvalidOrder,  # limit order price error
-                'order-orderstate-error': OrderNotFound,  # canceling an already canceled order
-                'order-queryorder-invalid': OrderNotFound,  # querying a non-existent order
-                'order-update-error': ExchangeNotAvailable,  # undocumented error
-                'api-signature-check-failed': AuthenticationError,
-                'api-signature-not-valid': AuthenticationError,  # {"status":"error","err-code":"api-signature-not-valid","err-msg":"Signature not valid: Incorrect Access key [Access key错误]","data":null}
+                'exact': {
+                    # err-code
+                    'gateway-internal-error': ExchangeNotAvailable,  # {"status":"error","err-code":"gateway-internal-error","err-msg":"Failed to load data. Try again later.","data":null}
+                    'account-frozen-balance-insufficient-error': InsufficientFunds,  # {"status":"error","err-code":"account-frozen-balance-insufficient-error","err-msg":"trade account balance is not enough, left: `0.0027`","data":null}
+                    'invalid-amount': InvalidOrder,  # eg "Paramemter `amount` is invalid."
+                    'order-limitorder-amount-min-error': InvalidOrder,  # limit order amount error, min: `0.001`
+                    'order-marketorder-amount-min-error': InvalidOrder,  # market order amount error, min: `0.01`
+                    'order-limitorder-price-min-error': InvalidOrder,  # limit order price error
+                    'order-limitorder-price-max-error': InvalidOrder,  # limit order price error
+                    'order-orderstate-error': OrderNotFound,  # canceling an already canceled order
+                    'order-queryorder-invalid': OrderNotFound,  # querying a non-existent order
+                    'order-update-error': ExchangeNotAvailable,  # undocumented error
+                    'api-signature-check-failed': AuthenticationError,
+                    'api-signature-not-valid': AuthenticationError,  # {"status":"error","err-code":"api-signature-not-valid","err-msg":"Signature not valid: Incorrect Access key [Access key错误]","data":null}
+                    'base-record-invalid': OrderNotFound,  # https://github.com/ccxt/ccxt/issues/5750
+                    # err-msg
+                    'invalid symbol': BadSymbol,  # {"ts":1568813334794,"status":"error","err-code":"invalid-parameter","err-msg":"invalid symbol"}
+                },
             },
             'options': {
                 # https://github.com/ccxt/ccxt/issues/5376
@@ -307,10 +314,10 @@ class huobipro (Exchange):
         change = None
         percentage = None
         average = None
-        if (open is not None) and(close is not None):
+        if (open is not None) and (close is not None):
             change = close - open
             average = self.sum(open, close) / 2
-            if (close is not None) and(close > 0):
+            if (close is not None) and (close > 0):
                 percentage = (change / open) * 100
         baseVolume = self.safe_float(ticker, 'amount')
         quoteVolume = self.safe_float(ticker, 'vol')
@@ -468,12 +475,12 @@ class huobipro (Exchange):
 
     def parse_ohlcv(self, ohlcv, market=None, timeframe='1m', since=None, limit=None):
         return [
-            ohlcv['id'] * 1000,
-            ohlcv['open'],
-            ohlcv['high'],
-            ohlcv['low'],
-            ohlcv['close'],
-            ohlcv['amount'],
+            self.safe_timestamp(ohlcv, 'id'),
+            self.safe_float(ohlcv, 'open'),
+            self.safe_float(ohlcv, 'high'),
+            self.safe_float(ohlcv, 'low'),
+            self.safe_float(ohlcv, 'close'),
+            self.safe_float(ohlcv, 'amount'),
         ]
 
     def fetch_ohlcv(self, symbol, timeframe='1m', since=None, limit=1000, params={}):
@@ -752,7 +759,7 @@ class huobipro (Exchange):
         timestamp = self.safe_integer(order, 'created-at')
         amount = self.safe_float(order, 'amount')
         filled = self.safe_float_2(order, 'filled-amount', 'field-amount')  # typo in their API, filled amount
-        if (type == 'market') and(side == 'buy'):
+        if (type == 'market') and (side == 'buy'):
             amount = filled if (status == 'closed') else None
         price = self.safe_float(order, 'price')
         if price == 0.0:
@@ -764,7 +771,7 @@ class huobipro (Exchange):
             if amount is not None:
                 remaining = amount - filled
             # if cost is defined and filled is not zero
-            if (cost is not None) and(filled > 0):
+            if (cost is not None) and (filled > 0):
                 average = cost / filled
         feeCost = self.safe_float_2(order, 'filled-fees', 'field-fees')  # typo in their API, filled fees
         fee = None
@@ -806,7 +813,7 @@ class huobipro (Exchange):
             'type': side + '-' + type,
         }
         if self.options['createMarketBuyOrderRequiresPrice']:
-            if (type == 'market') and(side == 'buy'):
+            if (type == 'market') and (side == 'buy'):
                 if price is None:
                     raise InvalidOrder(self.id + " market buy order requires price argument to calculate cost(total amount of quote currency to spend for buying, amount * price). To switch off self warning exception and specify cost in the amount argument, set .options['createMarketBuyOrderRequiresPrice'] = False. Make sure you know what you're doing.")
                 else:
@@ -927,10 +934,12 @@ class huobipro (Exchange):
         else:
             if params:
                 url += '?' + self.urlencode(params)
-        url = self.urls['api'][api] + url
+        url = self.implode_params(self.urls['api'][api], {
+            'hostname': self.hostname,
+        }) + url
         return {'url': url, 'method': method, 'body': body, 'headers': headers}
 
-    def handle_errors(self, httpCode, reason, url, method, headers, body, response):
+    def handle_errors(self, httpCode, reason, url, method, headers, body, response, requestHeaders, requestBody):
         if response is None:
             return  # fallback to default error handler
         if 'status' in response:
@@ -941,9 +950,12 @@ class huobipro (Exchange):
             if status == 'error':
                 code = self.safe_string(response, 'err-code')
                 feedback = self.id + ' ' + self.json(response)
-                exceptions = self.exceptions
+                exceptions = self.exceptions['exact']
                 if code in exceptions:
                     raise exceptions[code](feedback)
+                message = self.safe_string(response, 'err-msg')
+                if message in exceptions:
+                    raise exceptions[message](feedback)
                 raise ExchangeError(feedback)
 
     def fetch_deposits(self, code=None, since=None, limit=None, params={}):

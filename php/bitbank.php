@@ -88,7 +88,7 @@ class bitbank extends Exchange {
                 ),
                 'funding' => array (
                     'withdraw' => array (
-                        // 'JPY' => amount => amount > 30000 ? 756 : 540,
+                        // 'JPY' => (amount > 30000) ? 756 : 540,
                         'BTC' => 0.001,
                         'LTC' => 0.001,
                         'XRP' => 0.15,
@@ -310,14 +310,8 @@ class bitbank extends Exchange {
             }
         }
         $status = $this->parse_order_status($this->safe_string($order, 'status'));
-        $type = $this->safe_string($order, 'type');
-        if ($type !== null) {
-            $type = strtolower($type);
-        }
-        $side = $this->safe_string($order, 'side');
-        if ($side !== null) {
-            $side = strtolower($side);
-        }
+        $type = $this->safe_string_lower($order, 'type');
+        $side = $this->safe_string_lower($order, 'side');
         return array (
             'id' => $id,
             'datetime' => $this->iso8601 ($timestamp),

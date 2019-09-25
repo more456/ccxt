@@ -104,7 +104,7 @@ class livecoin (Exchange):
             },
             'commonCurrencies': {
                 'BTCH': 'Bithash',
-                'CPC': 'CapriCoin',
+                'CPC': 'Capricoin',
                 'EDR': 'E-Dinar Coin',  # conflicts with EDR for Endor Protocol and EDRCoin
                 'eETT': 'EETT',
                 'FirstBlood': '1ST',
@@ -138,6 +138,7 @@ class livecoin (Exchange):
                     '503': ExchangeNotAvailable,
                 },
                 'broad': {
+                    'insufficient funds': InsufficientFunds,  # https://github.com/ccxt/ccxt/issues/5749
                     'NOT FOUND': OrderNotFound,
                     'Cannot find order': OrderNotFound,
                     'Minimal amount is': InvalidOrder,
@@ -399,9 +400,7 @@ class livecoin (Exchange):
         #         "commission": 0,
         #         "clientorderid": 1472837650
         #     }
-        timestamp = self.safe_integer_2(trade, 'time', 'datetime')
-        if timestamp is not None:
-            timestamp = timestamp * 1000
+        timestamp = self.safe_timestamp_2(trade, 'time', 'datetime')
         fee = None
         feeCost = self.safe_float(trade, 'commission')
         if feeCost is not None:
@@ -412,9 +411,7 @@ class livecoin (Exchange):
             }
         orderId = self.safe_string(trade, 'clientorderid')
         id = self.safe_string(trade, 'id')
-        side = self.safe_string(trade, 'type')
-        if side is not None:
-            side = side.lower()
+        side = self.safe_string_lower(trade, 'type')
         amount = self.safe_float(trade, 'quantity')
         price = self.safe_float(trade, 'price')
         cost = None
@@ -543,11 +540,10 @@ class livecoin (Exchange):
             marketId = self.safe_string(order, 'symbol', marketId)
             if marketId in self.markets_by_id:
                 market = self.markets_by_id[marketId]
-        type = None
+        type = self.safe_string_lower(order, 'type')
         side = None
-        if 'type' in order:
-            lowercaseType = order['type'].lower()
-            orderType = lowercaseType.split('_')
+        if type is not None:
+            orderType = type.split('_')
             type = orderType[0]
             side = orderType[1]
         price = self.safe_float(order, 'price')
@@ -713,7 +709,7 @@ class livecoin (Exchange):
         id = self.safe_string(transaction, 'documentId')
         amount = self.safe_float(transaction, 'amount')
         timestamp = self.safe_integer(transaction, 'date')
-        type = self.safe_string(transaction, 'type').lower()
+        type = self.safe_string_lower(transaction, 'type')
         currencyId = self.safe_string(transaction, 'fixedCurrency')
         feeCost = self.safe_float(transaction, 'fee')
         code = self.safe_currency_code(currencyId, currency)
@@ -818,7 +814,7 @@ class livecoin (Exchange):
             }
         return {'url': url, 'method': method, 'body': body, 'headers': headers}
 
-    def handle_errors(self, code, reason, url, method, headers, body, response):
+    def handle_errors(self, code, reason, url, method, headers, body, response, requestHeaders, requestBody):
         if response is None:
             return  # fallback to default error handler
         if code >= 300:
@@ -834,12 +830,9 @@ class livecoin (Exchange):
         if not success:
             feedback = self.id + ' ' + body
             broad = self.exceptions['broad']
-            message = self.safe_string(response, 'message')
-            broadKey = self.findBroadlyMatchedKey(broad, message)
-            if broadKey is not None:
-                raise broad[broadKey](feedback)
-            exception = self.safe_string(response, 'exception')
-            broadKey = self.findBroadlyMatchedKey(broad, exception)
-            if broadKey is not None:
-                raise broad[broadKey](feedback)
+            message = self.safe_string_2(response, 'message', 'exception')
+            if message is not None:
+                broadKey = self.findBroadlyMatchedKey(broad, message)
+                if broadKey is not None:
+                    raise broad[broadKey](feedback)
             raise ExchangeError(feedback)

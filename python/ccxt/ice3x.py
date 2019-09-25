@@ -123,7 +123,7 @@ class ice3x (Exchange):
         return result
 
     def fetch_markets(self, params={}):
-        if not self.currencies_by_id:
+        if self.currencies_by_id is None:
             self.currencies = self.fetch_currencies()
             self.currencies_by_id = self.index_by(self.currencies, 'id')
         response = self.publicGetPairList(params)
@@ -209,7 +209,7 @@ class ice3x (Exchange):
         }
         if limit is not None:
             type = self.safe_string(params, 'type')
-            if (type != 'ask') and(type != 'bid'):
+            if (type != 'ask') and (type != 'bid'):
                 # eslint-disable-next-line quotes
                 raise ExchangeError(self.id + " fetchOrderBook requires an exchange-specific extra 'type' param('bid' or 'ask') when used with a limit")
             else:
@@ -219,9 +219,7 @@ class ice3x (Exchange):
         return self.parse_order_book(orderbook, None, 'bids', 'asks', 'price', 'amount')
 
     def parse_trade(self, trade, market=None):
-        timestamp = self.safe_integer(trade, 'created')
-        if timestamp is not None:
-            timestamp *= 1000
+        timestamp = self.safe_timestamp(trade, 'created')
         price = self.safe_float(trade, 'price')
         amount = self.safe_float(trade, 'volume')
         cost = None
@@ -285,10 +283,10 @@ class ice3x (Exchange):
     def parse_order(self, order, market=None):
         pairId = self.safe_integer(order, 'pair_id')
         symbol = None
-        if pairId and not market and(pairId in list(self.marketsById.keys())):
+        if pairId and not market and (pairId in list(self.marketsById.keys())):
             market = self.marketsById[pairId]
             symbol = market['symbol']
-        timestamp = self.safe_integer(order, 'created') * 1000
+        timestamp = self.safe_timestamp(order, 'created')
         price = self.safe_float(order, 'price')
         amount = self.safe_float(order, 'volume')
         status = self.safe_integer(order, 'active')

@@ -193,7 +193,7 @@ class bibox (Exchange):
                         'max': None,
                     },
                     'price': {
-                        'min': None,
+                        'min': math.pow(10, -precision['price']),
                         'max': None,
                     },
                 },
@@ -216,7 +216,7 @@ class bibox (Exchange):
         change = self.safe_float(ticker, 'change')
         baseVolume = self.safe_float_2(ticker, 'vol', 'vol24H')
         open = None
-        if (last is not None) and(change is not None):
+        if (last is not None) and (change is not None):
             open = last - change
         percentage = self.safe_string(ticker, 'percent')
         if percentage is not None:
@@ -281,7 +281,7 @@ class bibox (Exchange):
             if marketId is None:
                 baseId = self.safe_string(trade, 'coin_symbol')
                 quoteId = self.safe_string(trade, 'currency_symbol')
-                if (baseId is not None) and(quoteId is not None):
+                if (baseId is not None) and (quoteId is not None):
                     marketId = baseId + '_' + quoteId
             if marketId in self.markets_by_id:
                 market = self.markets_by_id[marketId]
@@ -629,7 +629,7 @@ class bibox (Exchange):
             marketId = None
             baseId = self.safe_string(order, 'coin_symbol')
             quoteId = self.safe_string(order, 'currency_symbol')
-            if (baseId is not None) and(quoteId is not None):
+            if (baseId is not None) and (quoteId is not None):
                 marketId = baseId + '_' + quoteId
             if marketId in self.markets_by_id:
                 market = self.markets_by_id[marketId]
@@ -658,7 +658,7 @@ class bibox (Exchange):
                 'cost': feeCost,
                 'currency': None,
             }
-        cost = cost if cost else float(price) * filled
+        cost = cost if cost else (float(price) * filled)
         return {
             'info': order,
             'id': id,
@@ -691,13 +691,13 @@ class bibox (Exchange):
         return self.safe_string(statuses, status, status)
 
     def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
+        self.load_markets()
         market = None
         pair = None
         if symbol is not None:
-            self.load_markets()
             market = self.market(symbol)
             pair = market['id']
-        size = limit if (limit) else 200
+        size = limit if limit else 200
         request = {
             'cmd': 'orderpending/orderPendingList',
             'body': self.extend({
@@ -734,7 +734,7 @@ class bibox (Exchange):
             raise ArgumentsRequired(self.id + ' fetchMyTrades requires a `symbol` argument')
         self.load_markets()
         market = self.market(symbol)
-        size = limit if (limit) else 200
+        size = limit if limit else 200
         request = {
             'cmd': 'orderpending/orderHistoryList',
             'body': self.extend({
@@ -841,7 +841,7 @@ class bibox (Exchange):
         headers = {'Content-Type': 'application/json'}
         return {'url': url, 'method': method, 'body': body, 'headers': headers}
 
-    def handle_errors(self, code, reason, url, method, headers, body, response):
+    def handle_errors(self, code, reason, url, method, headers, body, response, requestHeaders, requestBody):
         if response is None:
             return
         if 'error' in response:

@@ -94,7 +94,7 @@ class bitbank (Exchange):
                 },
                 'funding': {
                     'withdraw': {
-                        # 'JPY': amount => amount > 756 if 30000 else 540,
+                        # 'JPY': 756 if (amount > 30000) else 540,
                         'BTC': 0.001,
                         'LTC': 0.001,
                         'XRP': 0.15,
@@ -281,7 +281,7 @@ class bitbank (Exchange):
         id = self.safe_string(order, 'order_id')
         marketId = self.safe_string(order, 'pair')
         symbol = None
-        if marketId and not market and(marketId in list(self.marketsById.keys())):
+        if marketId and not market and (marketId in list(self.marketsById.keys())):
             market = self.marketsById[marketId]
         if market is not None:
             symbol = market['symbol']
@@ -296,12 +296,8 @@ class bitbank (Exchange):
             if average is not None:
                 cost = filled * average
         status = self.parse_order_status(self.safe_string(order, 'status'))
-        type = self.safe_string(order, 'type')
-        if type is not None:
-            type = type.lower()
-        side = self.safe_string(order, 'side')
-        if side is not None:
-            side = side.lower()
+        type = self.safe_string_lower(order, 'type')
+        side = self.safe_string_lower(order, 'side')
         return {
             'id': id,
             'datetime': self.iso8601(timestamp),

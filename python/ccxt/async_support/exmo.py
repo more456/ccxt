@@ -641,7 +641,7 @@ class exmo (Exchange):
         return result
 
     def parse_ticker(self, ticker, market=None):
-        timestamp = self.safe_integer(ticker, 'updated') * 1000
+        timestamp = self.safe_timestamp(ticker, 'updated')
         symbol = None
         if market is not None:
             symbol = market['symbol']
@@ -689,7 +689,7 @@ class exmo (Exchange):
         return self.parse_ticker(response[market['id']], market)
 
     def parse_trade(self, trade, market=None):
-        timestamp = self.safe_integer(trade, 'date') * 1000
+        timestamp = self.safe_timestamp(trade, 'date')
         fee = None
         symbol = None
         id = self.safe_string(trade, 'trade_id')
@@ -703,13 +703,13 @@ class exmo (Exchange):
             symbol = market['symbol']
             if market['taker'] != market['maker']:
                 raise ExchangeError(self.id + ' parseTrade can not deduce proper fee costs, taker and maker fees now differ')
-            if (side == 'buy') and(amount is not None):
+            if (side == 'buy') and (amount is not None):
                 fee = {
                     'currency': market['base'],
                     'cost': amount * market['taker'],
                     'rate': market['taker'],
                 }
-            elif (side == 'sell') and(cost is not None):
+            elif (side == 'sell') and (cost is not None):
                 fee = {
                     'currency': market['quote'],
                     'cost': cost * market['taker'],
@@ -738,31 +738,56 @@ class exmo (Exchange):
             'pair': market['id'],
         }
         response = await self.publicGetTrades(self.extend(request, params))
-        return self.parse_trades(response[market['id']], market, since, limit)
+        data = self.safe_value(response, market['id'], [])
+        return self.parse_trades(data, market, since, limit)
 
     async def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
-        # their docs does not mention it, but if you don't supply a symbol
-        # their API will return an empty response as if you don't have any trades
-        # therefore we make it required here as calling it without a symbol is useless
+        # a symbol is required but it can be a single string, or a non-empty array
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchMyTrades() requires a symbol argument')
+            raise ArgumentsRequired(self.id + ' fetchMyTrades() requires a symbol argument(a single symbol or an array)')
         await self.load_markets()
-        market = self.market(symbol)
+        pair = None
+        market = None
+        if isinstance(symbol, list):
+            numSymbols = len(symbol)
+            if numSymbols < 1:
+                raise ArgumentsRequired(self.id + ' fetchMyTrades() requires a non-empty symbol array')
+            marketIds = self.market_ids(symbol)
+            pair = ','.join(marketIds)
+        else:
+            market = self.market(symbol)
+            pair = market['id']
         request = {
-            'pair': market['id'],
+            'pair': pair,
         }
         if limit is not None:
             request['limit'] = limit
         response = await self.privatePostUserTrades(self.extend(request, params))
-        if market is not None:
-            response = response[market['id']]
-        return self.parse_trades(response, market, since, limit)
+        result = []
+        marketIds = list(response.keys())
+        for i in range(0, len(marketIds)):
+            marketId = marketIds[i]
+            symbol = None
+            if marketId in self.markets_by_id:
+                market = self.markets_by_id[marketId]
+                symbol = market['symbol']
+            else:
+                baseId, quoteId = marketId.split('_')
+                base = self.safe_currency_code(baseId)
+                quote = self.safe_currency_code(quoteId)
+                symbol = base + '/' + quote
+            items = response[marketId]
+            trades = self.parse_trades(items, market, since, limit, {
+                'symbol': symbol,
+            })
+            result = self.array_concat(result, trades)
+        return self.filter_by_since_limit(result, since, limit)
 
     async def create_order(self, symbol, type, side, amount, price=None, params={}):
         await self.load_markets()
         prefix = (type + '_') if (type == 'market') else ''
         market = self.market(symbol)
-        if (type == 'market') and(price is None):
+        if (type == 'market') and (price is None):
             price = 0
         request = {
             'pair': market['id'],
@@ -949,21 +974,19 @@ class exmo (Exchange):
         #     }
         #
         id = self.safe_string(order, 'order_id')
-        timestamp = self.safe_integer(order, 'created')
-        if timestamp is not None:
-            timestamp *= 1000
+        timestamp = self.safe_timestamp(order, 'created')
         symbol = None
         side = self.safe_string(order, 'type')
         if market is None:
             marketId = None
             if 'pair' in order:
                 marketId = order['pair']
-            elif ('in_currency' in list(order.keys())) and('out_currency' in list(order.keys())):
+            elif ('in_currency' in list(order.keys())) and ('out_currency' in list(order.keys())):
                 if side == 'buy':
                     marketId = order['in_currency'] + '_' + order['out_currency']
                 else:
                     marketId = order['out_currency'] + '_' + order['in_currency']
-            if (marketId is not None) and(marketId in list(self.markets_by_id.keys())):
+            if (marketId is not None) and (marketId in list(self.markets_by_id.keys())):
                 market = self.markets_by_id[marketId]
         amount = self.safe_float(order, 'quantity')
         if amount is None:
@@ -1123,9 +1146,7 @@ class exmo (Exchange):
         #            "txid": "ec46f784ad976fd7f7539089d1a129fe46...",
         #          }
         #
-        timestamp = self.safe_float(transaction, 'dt')
-        if timestamp is not None:
-            timestamp = timestamp * 1000
+        timestamp = self.safe_timestamp(transaction, 'dt')
         amount = self.safe_float(transaction, 'amount')
         if amount is not None:
             amount = abs(amount)
@@ -1237,7 +1258,7 @@ class exmo (Exchange):
     def nonce(self):
         return self.milliseconds()
 
-    def handle_errors(self, httpCode, reason, url, method, headers, body, response):
+    def handle_errors(self, httpCode, reason, url, method, headers, body, response, requestHeaders, requestBody):
         if response is None:
             return  # fallback to default error handler
         if 'result' in response:

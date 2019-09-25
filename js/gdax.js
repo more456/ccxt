@@ -420,7 +420,7 @@ module.exports = class gdax extends Exchange {
 
     async fetchTime (params = {}) {
         const response = await this.publicGetTime (params);
-        return this.parse8601 (this.parse8601 (response, 'iso'));
+        return this.parse8601 (response, 'iso');
     }
 
     parseOrderStatus (status) {
@@ -436,20 +436,23 @@ module.exports = class gdax extends Exchange {
     }
 
     parseOrder (order, market = undefined) {
-        const timestamp = this.parse8601 (order['created_at']);
+        const timestamp = this.parse8601 (this.safeString (order, 'created_at'));
         let symbol = undefined;
-        if (market === undefined) {
-            const marketId = this.safeString (order, 'product_id');
+        const marketId = this.safeString (order, 'product_id');
+        let quote = undefined;
+        if (marketId !== undefined) {
             if (marketId in this.markets_by_id) {
                 market = this.markets_by_id[marketId];
+            } else {
+                const [ baseId, quoteId ] = marketId.split ('-');
+                const base = this.safeCurrencyCode (baseId);
+                quote = this.safeCurrencyCode (quoteId);
+                symbol = base + '/' + quote;
             }
         }
         const status = this.parseOrderStatus (this.safeString (order, 'status'));
         const price = this.safeFloat (order, 'price');
-        let amount = this.safeFloat2 (order, 'size', 'funds');
-        if (amount === undefined) {
-            amount = this.safeFloat (order, 'specified_funds');
-        }
+        const amount = this.safeFloat (order, 'size');
         const filled = this.safeFloat (order, 'filled_size');
         let remaining = undefined;
         if (amount !== undefined) {
@@ -464,6 +467,8 @@ module.exports = class gdax extends Exchange {
             let feeCurrencyCode = undefined;
             if (market !== undefined) {
                 feeCurrencyCode = market['quote'];
+            } else if (quote !== undefined) {
+                feeCurrencyCode = quote;
             }
             fee = {
                 'cost': feeCost,
@@ -471,7 +476,7 @@ module.exports = class gdax extends Exchange {
                 'rate': undefined,
             };
         }
-        if (market !== undefined) {
+        if ((symbol === undefined) && (market !== undefined)) {
             symbol = market['symbol'];
         }
         const id = this.safeString (order, 'id');
@@ -758,7 +763,6 @@ module.exports = class gdax extends Exchange {
                     payload = body;
                 }
             }
-            // let payload = (body) ? body : '';
             const what = nonce + method + request + payload;
             const secret = this.base64ToBinary (this.secret);
             const signature = this.hmac (this.encode (what), secret, 'sha256', 'base64');
@@ -831,7 +835,7 @@ module.exports = class gdax extends Exchange {
         };
     }
 
-    handleErrors (code, reason, url, method, headers, body, response) {
+    handleErrors (code, reason, url, method, headers, body, response, requestHeaders, requestBody) {
         if ((code === 400) || (code === 404)) {
             if (body[0] === '{') {
                 const message = response['message'];

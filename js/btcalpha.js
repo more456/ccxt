@@ -102,6 +102,9 @@ module.exports = class btcalpha extends Exchange {
                     },
                 },
             },
+            'commonCurrencies': {
+                'CBC': 'Cashbery',
+            },
         });
     }
 
@@ -168,10 +171,7 @@ module.exports = class btcalpha extends Exchange {
         if (market !== undefined) {
             symbol = market['symbol'];
         }
-        let timestamp = this.safeInteger (trade, 'timestamp');
-        if (timestamp !== undefined) {
-            timestamp *= 1000;
-        }
+        const timestamp = this.safeTimestamp (trade, 'timestamp');
         const price = this.safeFloat (trade, 'price');
         const amount = this.safeFloat (trade, 'amount');
         let cost = undefined;
@@ -217,12 +217,12 @@ module.exports = class btcalpha extends Exchange {
 
     parseOHLCV (ohlcv, market = undefined, timeframe = '5m', since = undefined, limit = undefined) {
         return [
-            ohlcv['time'] * 1000,
-            ohlcv['open'],
-            ohlcv['high'],
-            ohlcv['low'],
-            ohlcv['close'],
-            ohlcv['volume'],
+            this.safeTimestamp (ohlcv, 'time'),
+            this.safeFloat (ohlcv, 'open'),
+            this.safeFloat (ohlcv, 'high'),
+            this.safeFloat (ohlcv, 'low'),
+            this.safeFloat (ohlcv, 'close'),
+            this.safeFloat (ohlcv, 'volume'),
         ];
     }
 
@@ -276,10 +276,7 @@ module.exports = class btcalpha extends Exchange {
         if (market !== undefined) {
             symbol = market['symbol'];
         }
-        let timestamp = this.safeInteger (order, 'date');
-        if (timestamp !== undefined) {
-            timestamp *= 1000;
-        }
+        const timestamp = this.safeTimestamp (order, 'date');
         const price = this.safeFloat (order, 'price');
         const amount = this.safeFloat (order, 'amount');
         const status = this.parseOrderStatus (this.safeString (order, 'status'));
@@ -287,6 +284,18 @@ module.exports = class btcalpha extends Exchange {
         let trades = this.safeValue (order, 'trades', []);
         trades = this.parseTrades (trades, market);
         const side = this.safeString2 (order, 'my_side', 'type');
+        let filled = undefined;
+        const numTrades = trades.length;
+        if (numTrades > 0) {
+            filled = 0.0;
+            for (let i = 0; i < numTrades; i++) {
+                filled = this.sum (filled, trades[i]['amount']);
+            }
+        }
+        let remaining = undefined;
+        if ((amount !== undefined) && (amount > 0) && (filled !== undefined)) {
+            remaining = Math.max (0, amount - filled);
+        }
         return {
             'id': id,
             'datetime': this.iso8601 (timestamp),
@@ -298,8 +307,8 @@ module.exports = class btcalpha extends Exchange {
             'price': price,
             'cost': undefined,
             'amount': amount,
-            'filled': undefined,
-            'remaining': undefined,
+            'filled': filled,
+            'remaining': remaining,
             'trades': trades,
             'fee': undefined,
             'info': order,
@@ -319,7 +328,11 @@ module.exports = class btcalpha extends Exchange {
         if (!response['success']) {
             throw new InvalidOrder (this.id + ' ' + this.json (response));
         }
-        return this.parseOrder (response, market);
+        const order = this.parseOrder (response, market);
+        amount = (order['amount'] > 0) ? order['amount'] : amount;
+        return this.extend (order, {
+            'amount': amount,
+        });
     }
 
     async cancelOrder (id, symbol = undefined, params = {}) {
@@ -415,7 +428,7 @@ module.exports = class btcalpha extends Exchange {
         return { 'url': url, 'method': method, 'body': body, 'headers': headers };
     }
 
-    handleErrors (code, reason, url, method, headers, body, response) {
+    handleErrors (code, reason, url, method, headers, body, response, requestHeaders, requestBody) {
         if (response === undefined) {
             return; // fallback to default error handler
         }

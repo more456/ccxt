@@ -218,12 +218,12 @@ class poloniex (Exchange):
 
     def parse_ohlcv(self, ohlcv, market=None, timeframe='5m', since=None, limit=None):
         return [
-            ohlcv['date'] * 1000,
-            ohlcv['open'],
-            ohlcv['high'],
-            ohlcv['low'],
-            ohlcv['close'],
-            ohlcv['quoteVolume'],
+            self.safe_timestamp(ohlcv, 'date'),
+            self.safe_float(ohlcv, 'open'),
+            self.safe_float(ohlcv, 'high'),
+            self.safe_float(ohlcv, 'low'),
+            self.safe_float(ohlcv, 'close'),
+            self.safe_float(ohlcv, 'quoteVolume'),
         ]
 
     async def fetch_ohlcv(self, symbol, timeframe='5m', since=None, limit=None, params={}):
@@ -486,7 +486,7 @@ class poloniex (Exchange):
         symbol = None
         base = None
         quote = None
-        if (not market) and('currencyPair' in list(trade.keys())):
+        if (not market) and ('currencyPair' in list(trade.keys())):
             currencyPair = trade['currencyPair']
             if currencyPair in self.markets_by_id:
                 market = self.markets_by_id[currencyPair]
@@ -1158,9 +1158,7 @@ class poloniex (Exchange):
         #         "withdrawalNumber": 11162900
         #     }
         #
-        timestamp = self.safe_integer(transaction, 'timestamp')
-        if timestamp is not None:
-            timestamp = timestamp * 1000
+        timestamp = self.safe_timestamp(transaction, 'timestamp')
         currencyId = self.safe_string(transaction, 'currency')
         code = self.safe_currency_code(currencyId)
         status = self.safe_string(transaction, 'status', 'pending')
@@ -1169,7 +1167,7 @@ class poloniex (Exchange):
             parts = status.split(': ')
             numParts = len(parts)
             status = parts[0]
-            if (numParts > 1) and(txid is None):
+            if (numParts > 1) and (txid is None):
                 txid = parts[1]
             status = self.parse_transaction_status(status)
         type = self.safe_string(transaction, 'type')
@@ -1221,7 +1219,7 @@ class poloniex (Exchange):
             }
         return {'url': url, 'method': method, 'body': body, 'headers': headers}
 
-    def handle_errors(self, code, reason, url, method, headers, body, response):
+    def handle_errors(self, code, reason, url, method, headers, body, response, requestHeaders, requestBody):
         if response is None:
             return
         # {"error":"Permission denied."}

@@ -344,9 +344,7 @@ class zb (Exchange):
         return self.parse_ohlcvs(data, market, timeframe, since, limit)
 
     def parse_trade(self, trade, market=None):
-        timestamp = self.safe_integer(trade, 'date')
-        if timestamp is not None:
-            timestamp *= 1000
+        timestamp = self.safe_timestamp(trade, 'date')
         side = self.safe_string(trade, 'trade_type')
         side = 'buy' if (side == 'bid') else 'sell'
         id = self.safe_string(trade, 'tid')
@@ -518,7 +516,7 @@ class zb (Exchange):
         cost = self.safe_float(order, 'trade_money')
         average = None
         status = self.parse_order_status(self.safe_string(order, 'status'))
-        if (cost is not None) and(filled is not None) and(filled > 0):
+        if (cost is not None) and (filled is not None) and (filled > 0):
             average = cost / filled
         id = self.safe_string(order, 'id')
         return {
@@ -575,7 +573,7 @@ class zb (Exchange):
             url += '/' + path + '?' + auth + '&' + suffix
         return {'url': url, 'method': method, 'body': body, 'headers': headers}
 
-    def handle_errors(self, httpCode, reason, url, method, headers, body, response):
+    def handle_errors(self, httpCode, reason, url, method, headers, body, response, requestHeaders, requestBody):
         if response is None:
             return  # fallback to default error handler
         if body[0] == '{':
